@@ -19,52 +19,92 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
+    let isMounted = true;
+
     async function init() {
-      const { data } = await supabase.auth.getSession();
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.log("获取登录状态失败：", error);
+      }
 
       if (!data.session) {
-        router.push("/login");
+        router.replace("/login");
         return;
       }
 
       const currentUser = data.session.user;
+
+      if (!isMounted) return;
+
       setUser(currentUser);
 
       await loadStats(currentUser.id);
+
+      if (!isMounted) return;
 
       setLoading(false);
     }
 
     init();
+
+    return () => {
+      isMounted = false;
+    };
   }, [router]);
 
   async function loadStats(userId) {
-    const { count: productsCount } = await supabase
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId);
+    const [
+      productsResult,
+      batteryResult,
+      purchasesResult,
+      amazonResult,
+    ] = await Promise.all([
+      supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
 
-    const { count: batteryCount } = await supabase
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("battery", true);
+      supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("battery", true),
 
-    const { count: purchasesCount } = await supabase
-      .from("purchase_records")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId);
+      supabase
+        .from("purchase_records")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
 
-    const { count: amazonCount } = await supabase
-      .from("amazon_shipments")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId);
+      supabase
+        .from("amazon_shipments")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
+    ]);
+
+    if (productsResult.error) {
+      console.log("产品数量查询失败：", productsResult.error);
+    }
+
+    if (batteryResult.error) {
+      console.log("带电产品数量查询失败：", batteryResult.error);
+    }
+
+    if (purchasesResult.error) {
+      console.log("采购记录数量查询失败：", purchasesResult.error);
+    }
+
+    if (amazonResult.error) {
+      console.log("FBA 发货记录数量查询失败：", amazonResult.error);
+    }
 
     setStats({
-      products: productsCount || 0,
-      batteryProducts: batteryCount || 0,
-      purchases: purchasesCount || 0,
-      amazonShipments: amazonCount || 0,
+      products: productsResult.count || 0,
+      batteryProducts: batteryResult.count || 0,
+      purchases: purchasesResult.count || 0,
+      amazonShipments: amazonResult.count || 0,
     });
   }
 
